@@ -467,8 +467,8 @@
 </div>
 
 <script>
-    // === ВАША ССЫЛКА НА GOOGLE APPS SCRIPT ===
-    const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwSGHDgMhssJxefEd2RkaAxtwjmQnToT_fg4ug1wSmGbUNhISbq53VMkMiVMlVXMzc/exec';
+    // === ОБНОВЛЕННАЯ ССЫЛКА НА GOOGLE APPS SCRIPT ===
+    const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwCDnYl-1OM9idjUuqOiPQvCsBj3E_wEjCTZL_EkUI0K6JNAsIdE_YLWrg4_6huToylXQ/exec';
     
     // --- Элементы ---
     const envelope = document.getElementById('envelope');
@@ -507,14 +507,13 @@
             // Отправляем POST-запрос
             const response = await fetch(SCRIPT_URL, {
                 method: 'POST',
-                mode: 'no-cors', // из-за политики CORS используем no-cors
+                mode: 'no-cors',
                 headers: {
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify(fullData)
             });
             
-            // При no-cors мы не можем прочитать ответ, но запрос уходит
             return { success: true };
         } catch(error) {
             console.error('Ошибка отправки:', error);
@@ -572,7 +571,6 @@
             fullNameInput.value = '';
             birthDateInput.value = '';
             
-            // Небольшой эффект радости
             createSubtleConfetti();
             
             setTimeout(() => {
