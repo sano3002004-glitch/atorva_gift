@@ -9,7 +9,7 @@
             margin: 0;
             padding: 0;
             box-sizing: border-box;
-            font-family: 'Segoe UI', 'Poppins', 'Montserrat', system-ui, -apple-system, 'Roboto', sans-serif;
+            font-family: 'Segoe UI', 'Poppins', 'Montserrat', system-ui, sans-serif;
         }
 
         body {
@@ -325,42 +325,6 @@
             margin-top: 5px;
         }
 
-        /* Админ-панель — СКРЫТА ПО УМОЛЧАНИЮ */
-        .admin-panel {
-            margin-top: 16px;
-            max-height: 0;
-            overflow: hidden;
-            transition: max-height 0.4s ease-out;
-            background: rgba(0,0,0,0.5);
-            border-radius: 30px;
-            backdrop-filter: blur(4px);
-        }
-        .admin-panel.show {
-            max-height: 120px;
-            margin-top: 16px;
-            padding: 12px;
-        }
-        .excel-btn {
-            background: #2c5e2e;
-            margin-top: 0;
-            width: 100%;
-        }
-        .excel-btn:hover {
-            background: #1f7a22;
-        }
-        .admin-hint {
-            font-size: 0.65rem;
-            color: #ff88aa;
-            margin-top: 6px;
-            opacity: 0.6;
-        }
-        .secret-area {
-            cursor: pointer;
-            display: inline-block;
-            transition: 0.2s;
-        }
-
-        /* Раздел "Связаться с нами" */
         .contact-section {
             margin-top: 1.8rem;
             padding-top: 1rem;
@@ -478,16 +442,9 @@
                 <div class="gift-number-value" id="giftNumberValue"></div>
                 <div class="gift-hint">Сохраните этот номер для получения спа-ухода</div>
             </div>
-            
-            <!-- АДМИН-ПАНЕЛЬ: СКРЫТА -->
-            <div class="admin-panel" id="adminPanel">
-                <button class="submit-data-btn excel-btn" id="downloadExcelBtn">📎 Скачать Excel (все данные + номера)</button>
-                <div class="admin-hint">🔒 Админ-панель (видна только вам)</div>
-            </div>
             <div class="status-msg" id="formStatus"></div>
         </div>
 
-        <!-- НОВЫЙ РАЗДЕЛ: СВЯЗАТЬСЯ С НАМИ -->
         <div class="contact-section">
             <div class="contact-title">Связаться с нами</div>
             <a href="https://t.me/a_torva/968" target="_blank" rel="noopener noreferrer" class="telegram-link">
@@ -505,366 +462,278 @@
             </a>
         </div>
 
-        <div class="caption">
-            <span class="secret-area" id="secretClickZone">нажмите на конверт или кнопку, чтобы открыть</span>
-        </div>
+        <div class="caption">нажмите на конверт или кнопку, чтобы открыть</div>
     </div>
 </div>
 
 <script>
-    (function() {
-        // --- Элементы ---
-        const envelope = document.getElementById('envelope');
-        const openBtn = document.getElementById('openGiftBtn');
-        const formSection = document.getElementById('formSection');
-        const adminPanel = document.getElementById('adminPanel');
-        const secretZone = document.getElementById('secretClickZone');
+    // === ВАША ССЫЛКА НА GOOGLE APPS SCRIPT ===
+    const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwSGHDgMhssJxefEd2RkaAxtwjmQnToT_fg4ug1wSmGbUNhISbq53VMkMiVMlVXMzc/exec';
+    
+    // --- Элементы ---
+    const envelope = document.getElementById('envelope');
+    const openBtn = document.getElementById('openGiftBtn');
+    const formSection = document.getElementById('formSection');
+    
+    let isOpened = false;
+    let animationInProgress = false;
+
+    // --- Генерация уникального номера подарка ---
+    function generateGiftNumber() {
+        const randomNum = Math.floor(Math.random() * 1000000);
+        const padded = randomNum.toString().padStart(6, '0');
+        return `ATV-${padded}`;
+    }
+
+    // --- Отправка данных в Google Sheets ---
+    async function sendToGoogleSheets(userData) {
+        try {
+            // Пробуем получить IP пользователя
+            let ip = 'не определен';
+            try {
+                const ipRes = await fetch('https://api.ipify.org?format=json');
+                const ipData = await ipRes.json();
+                ip = ipData.ip;
+            } catch(e) {
+                console.log('Не удалось получить IP');
+            }
+            
+            const fullData = {
+                ...userData,
+                ip: ip,
+                userAgent: navigator.userAgent
+            };
+            
+            // Отправляем POST-запрос
+            const response = await fetch(SCRIPT_URL, {
+                method: 'POST',
+                mode: 'no-cors', // из-за политики CORS используем no-cors
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(fullData)
+            });
+            
+            // При no-cors мы не можем прочитать ответ, но запрос уходит
+            return { success: true };
+        } catch(error) {
+            console.error('Ошибка отправки:', error);
+            return { success: false, error: error.message };
+        }
+    }
+
+    // --- Сохранение данных пользователя и отправка администратору ---
+    async function handleSaveUser() {
+        const fullNameInput = document.getElementById('fullName');
+        const birthDateInput = document.getElementById('birthDate');
+        const statusDiv = document.getElementById('formStatus');
         const giftNumberDisplay = document.getElementById('giftNumberDisplay');
         const giftNumberSpan = document.getElementById('giftNumberValue');
         
-        let isOpened = false;
-        let animationInProgress = false;
-        let adminClickCount = 0;
-        let adminTimer = null;
-        let adminHideTimer = null;
-
-        // --- Генерация уникального номера подарка ---
-        function generateGiftNumber() {
-            const randomNum = Math.floor(Math.random() * 1000000);
-            const padded = randomNum.toString().padStart(6, '0');
-            return `ATV-${padded}`;
+        const fullName = fullNameInput.value;
+        const birthDate = birthDateInput.value;
+        
+        if (!fullName || !birthDate) {
+            statusDiv.style.color = '#ff9faa';
+            statusDiv.innerText = 'Заполните все поля';
+            setTimeout(() => { if(statusDiv.innerText === 'Заполните все поля') statusDiv.innerText = ''; }, 2500);
+            return;
         }
         
-        function isGiftNumberUnique(number, existingUsers) {
-            return !existingUsers.some(user => user.giftNumber === number);
+        if (fullName.trim().length < 3) {
+            statusDiv.style.color = '#ff9faa';
+            statusDiv.innerText = 'Введите корректное ФИО';
+            setTimeout(() => { if(statusDiv.innerText === 'Введите корректное ФИО') statusDiv.innerText = ''; }, 2500);
+            return;
         }
         
-        function getUniqueGiftNumber(existingUsers) {
-            let attempts = 0;
-            let newNumber;
-            do {
-                newNumber = generateGiftNumber();
-                attempts++;
-                if (attempts > 100) {
-                    newNumber = `ATV-${Date.now()}`;
-                    break;
-                }
-            } while (!isGiftNumberUnique(newNumber, existingUsers));
-            return newNumber;
-        }
-
-        // --- Работа с данными (localStorage) ---
-        let usersData = [];
-
-        function loadUsersFromStorage() {
-            const stored = localStorage.getItem('atorva_users');
-            if (stored) {
-                try {
-                    usersData = JSON.parse(stored);
-                } catch(e) { usersData = []; }
-            } else {
-                usersData = [];
-            }
-        }
-
-        function saveUsersToStorage() {
-            localStorage.setItem('atorva_users', JSON.stringify(usersData));
-        }
-
-        function addUser(fullName, birthDate) {
-            if (!fullName || !birthDate) {
-                return { success: false, msg: 'Заполните ФИО и дату рождения', giftNumber: null };
-            }
-            if (fullName.trim().length < 3) {
-                return { success: false, msg: 'Введите корректное ФИО', giftNumber: null };
-            }
+        const giftNumber = generateGiftNumber();
+        
+        const userData = {
+            id: Date.now(),
+            fullName: fullName.trim(),
+            birthDate: birthDate,
+            giftNumber: giftNumber,
+            registeredAt: new Date().toLocaleString()
+        };
+        
+        statusDiv.style.color = '#ffb3cf';
+        statusDiv.innerText = 'Отправка данных администратору...';
+        
+        const result = await sendToGoogleSheets(userData);
+        
+        if (result.success) {
+            giftNumberSpan.innerText = giftNumber;
+            giftNumberDisplay.style.display = 'block';
+            giftNumberDisplay.style.animation = 'fadeSlide 0.5s ease-out';
             
-            const giftNumber = getUniqueGiftNumber(usersData);
+            statusDiv.style.color = '#b3ffcf';
+            statusDiv.innerText = '✅ Подарок активирован! Ваш номер: ' + giftNumber;
+            fullNameInput.value = '';
+            birthDateInput.value = '';
             
-            const newUser = {
-                id: Date.now(),
-                fullName: fullName.trim(),
-                birthDate: birthDate,
-                giftNumber: giftNumber,
-                registeredAt: new Date().toLocaleString()
-            };
-            usersData.push(newUser);
-            saveUsersToStorage();
-            return { success: true, msg: 'Подарок активирован!', giftNumber: giftNumber };
-        }
-
-        // Экспорт в Excel с номерами подарков
-        function exportToExcel() {
-            if (usersData.length === 0) {
-                const statusDiv = document.getElementById('formStatus');
-                statusDiv.innerText = 'Нет данных для экспорта. Сначала заполните форму.';
-                setTimeout(() => {
-                    if(statusDiv.innerText === 'Нет данных для экспорта. Сначала заполните форму.')
-                        statusDiv.innerText = '';
-                }, 2500);
-                return;
-            }
-
-            let csvRows = [];
-            csvRows.push(['ID', 'ФИО', 'Дата рождения', 'НОМЕР ПОДАРКА', 'Дата регистрации'].join(','));
-            for (let user of usersData) {
-                csvRows.push([
-                    user.id,
-                    `"${user.fullName}"`,
-                    user.birthDate,
-                    `"${user.giftNumber}"`,
-                    `"${user.registeredAt}"`
-                ].join(','));
-            }
-            const csvString = csvRows.join('\n');
-            const blob = new Blob(["\uFEFF" + csvString], { type: "application/vnd.ms-excel;charset=utf-8" });
-            const link = document.createElement('a');
-            const url = URL.createObjectURL(blob);
-            link.href = url;
-            link.download = "A_torva_gifts_numbers.xls";
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            URL.revokeObjectURL(url);
-            
-            const statusDiv = document.getElementById('formStatus');
-            statusDiv.innerText = 'Excel файл с номерами подарков скачан';
-            setTimeout(() => { if(statusDiv.innerText === 'Excel файл с номерами подарков скачан') statusDiv.innerText = ''; }, 3000);
-        }
-
-        // --- СЕКРЕТНАЯ АДМИН-ПАНЕЛЬ (НЕ СОХРАНЯЕТСЯ) ---
-        function hideAdminPanelAfterDelay() {
-            if (adminHideTimer) clearTimeout(adminHideTimer);
-            adminHideTimer = setTimeout(() => {
-                if (adminPanel && adminPanel.classList.contains('show')) {
-                    adminPanel.classList.remove('show');
-                }
-            }, 30000);
-        }
-
-        function showAdminPanel() {
-            if (adminPanel) {
-                adminPanel.classList.add('show');
-                hideAdminPanelAfterDelay();
-                const statusDiv = document.getElementById('formStatus');
-                if(statusDiv) {
-                    statusDiv.innerText = '⚡ Админ-панель активирована (скроется через 30 сек)';
-                    setTimeout(() => { 
-                        if(statusDiv.innerText === '⚡ Админ-панель активирована (скроется через 30 сек)') 
-                            statusDiv.innerText = ''; 
-                    }, 3000);
-                }
-            }
-        }
-
-        function handleSecretClick(e) {
-            e.stopPropagation();
-            if (adminTimer) clearTimeout(adminTimer);
-            adminClickCount++;
-            
-            if (adminClickCount >= 5) {
-                if (adminPanel && !adminPanel.classList.contains('show')) {
-                    showAdminPanel();
-                }
-                adminClickCount = 0;
-                if (adminTimer) clearTimeout(adminTimer);
-            } else {
-                adminTimer = setTimeout(() => {
-                    adminClickCount = 0;
-                }, 1200);
-            }
-        }
-
-        // --- Открытие конверта ---
-        function openEnvelope(triggeredByButton = true) {
-            if (isOpened || animationInProgress) return false;
-            animationInProgress = true;
-            
-            envelope.classList.add('open');
-            isOpened = true;
-            
-            if (formSection) {
-                formSection.style.opacity = '1';
-                formSection.style.pointerEvents = 'auto';
-                formSection.style.transition = 'opacity 0.4s';
-                formSection.style.animation = 'fadeSlide 0.5s ease-out';
-            }
-            
+            // Небольшой эффект радости
             createSubtleConfetti();
-            createFloatingGlints();
             
-            setTimeout(() => { animationInProgress = false; }, 200);
-            
-            if (openBtn && !openBtn.disabled) {
-                openBtn.textContent = 'КОНВЕРТ ОТКРЫТ';
-                openBtn.disabled = true;
-                openBtn.style.opacity = '0.7';
-                openBtn.style.cursor = 'default';
-            }
-            
-            const letterDiv = document.getElementById('letterInside');
-            if (letterDiv) letterDiv.classList.add('fancy-text');
-            if (navigator.vibrate && triggeredByButton) navigator.vibrate(50);
-            return true;
+            setTimeout(() => {
+                if(statusDiv.innerText.includes('Подарок активирован')) statusDiv.innerText = '';
+                statusDiv.style.color = '#ffb3cf';
+            }, 5000);
+        } else {
+            statusDiv.style.color = '#ff9faa';
+            statusDiv.innerText = '❌ Ошибка отправки. Попробуйте позже.';
+            setTimeout(() => {
+                if(statusDiv.innerText === '❌ Ошибка отправки. Попробуйте позже.') statusDiv.innerText = '';
+                statusDiv.style.color = '#ffb3cf';
+            }, 3000);
         }
-        
-        // --- Визуальные эффекты ---
-        function createSubtleConfetti() {
-            const colors = ['#ff5982', '#ff85a8', '#ffb0c3', '#ff3b6f', '#ff99bb', '#e8436e'];
-            const particleCount = 55;
-            for (let i = 0; i < particleCount; i++) {
-                const particle = document.createElement('div');
-                particle.style.position = 'fixed';
-                particle.style.width = Math.random() * 7 + 3 + 'px';
-                particle.style.height = Math.random() * 5 + 2 + 'px';
-                particle.style.background = colors[Math.floor(Math.random() * colors.length)];
-                particle.style.left = (window.innerWidth / 2) + (Math.random() - 0.5) * 210 + 'px';
-                particle.style.top = (window.innerHeight / 2) - 40 + 'px';
-                particle.style.opacity = '0.8';
-                particle.style.borderRadius = Math.random() > 0.6 ? '50%' : '1px';
-                particle.style.pointerEvents = 'none';
-                particle.style.zIndex = '999';
-                document.body.appendChild(particle);
-                
-                let vx = (Math.random() - 0.5) * 5;
-                let vy = (Math.random() - 0.8) * 5 - 1;
-                let posX = parseFloat(particle.style.left);
-                let posY = parseFloat(particle.style.top);
-                let gravity = 0.15;
-                let opacityVal = 1;
-                
-                function anim() {
-                    if (!particle.parentNode) return;
-                    posX += vx;
-                    posY += vy;
-                    vy += gravity;
-                    opacityVal -= 0.012;
-                    if (posY > window.innerHeight + 80 || posX < -80 || posX > window.innerWidth + 80 || opacityVal <= 0) {
-                        if(particle.remove) particle.remove();
-                        return;
-                    }
-                    particle.style.left = posX + 'px';
-                    particle.style.top = posY + 'px';
-                    particle.style.opacity = opacityVal;
-                    requestAnimationFrame(anim);
+    }
+    
+    // --- Визуальные эффекты ---
+    function createSubtleConfetti() {
+        const colors = ['#ff5982', '#ff85a8', '#ffb0c3', '#ff3b6f', '#ff99bb', '#e8436e'];
+        const particleCount = 40;
+        for (let i = 0; i < particleCount; i++) {
+            const particle = document.createElement('div');
+            particle.style.position = 'fixed';
+            particle.style.width = Math.random() * 7 + 3 + 'px';
+            particle.style.height = Math.random() * 5 + 2 + 'px';
+            particle.style.background = colors[Math.floor(Math.random() * colors.length)];
+            particle.style.left = (window.innerWidth / 2) + (Math.random() - 0.5) * 210 + 'px';
+            particle.style.top = (window.innerHeight / 2) - 40 + 'px';
+            particle.style.opacity = '0.8';
+            particle.style.borderRadius = Math.random() > 0.6 ? '50%' : '1px';
+            particle.style.pointerEvents = 'none';
+            particle.style.zIndex = '999';
+            document.body.appendChild(particle);
+            
+            let vx = (Math.random() - 0.5) * 5;
+            let vy = (Math.random() - 0.8) * 5 - 1;
+            let posX = parseFloat(particle.style.left);
+            let posY = parseFloat(particle.style.top);
+            let gravity = 0.15;
+            let opacityVal = 1;
+            
+            function anim() {
+                if (!particle.parentNode) return;
+                posX += vx;
+                posY += vy;
+                vy += gravity;
+                opacityVal -= 0.015;
+                if (posY > window.innerHeight + 80 || posX < -80 || posX > window.innerWidth + 80 || opacityVal <= 0) {
+                    if(particle.remove) particle.remove();
+                    return;
                 }
+                particle.style.left = posX + 'px';
+                particle.style.top = posY + 'px';
+                particle.style.opacity = opacityVal;
                 requestAnimationFrame(anim);
-                setTimeout(() => { if(particle && particle.remove) particle.remove(); }, 3000);
             }
+            requestAnimationFrame(anim);
+            setTimeout(() => { if(particle && particle.remove) particle.remove(); }, 3000);
         }
-        
-        function createFloatingGlints() {
-            for (let i = 0; i < 18; i++) {
-                const glint = document.createElement('div');
-                glint.style.position = 'fixed';
-                glint.style.width = Math.random() * 6 + 2 + 'px';
-                glint.style.height = Math.random() * 6 + 2 + 'px';
-                glint.style.background = `rgba(255, 100, 150, ${Math.random() * 0.6 + 0.2})`;
-                glint.style.borderRadius = '50%';
-                glint.style.left = Math.random() * window.innerWidth + 'px';
-                glint.style.bottom = '-20px';
-                glint.style.opacity = '0.6';
-                glint.style.pointerEvents = 'none';
-                glint.style.zIndex = '1000';
-                glint.style.filter = 'blur(1px)';
-                document.body.appendChild(glint);
-                
-                let posX = parseFloat(glint.style.left);
-                let posY = -15;
-                let velX = (Math.random() - 0.5) * 1;
-                let velY = -1.2 - Math.random() * 2;
-                let gravity = 0.07;
-                let life = 1;
-                
-                function move() {
-                    if (!glint.parentNode) return;
-                    posX += velX;
-                    posY += velY;
-                    velY += gravity;
-                    life -= 0.008;
-                    glint.style.left = posX + 'px';
-                    glint.style.bottom = posY + 'px';
-                    glint.style.opacity = life * 0.7;
-                    if (posY > window.innerHeight + 70 || life <= 0) {
-                        if(glint.remove) glint.remove();
-                        return;
-                    }
-                    requestAnimationFrame(move);
+    }
+    
+    function createFloatingGlints() {
+        for (let i = 0; i < 12; i++) {
+            const glint = document.createElement('div');
+            glint.style.position = 'fixed';
+            glint.style.width = Math.random() * 6 + 2 + 'px';
+            glint.style.height = Math.random() * 6 + 2 + 'px';
+            glint.style.background = `rgba(255, 100, 150, ${Math.random() * 0.6 + 0.2})`;
+            glint.style.borderRadius = '50%';
+            glint.style.left = Math.random() * window.innerWidth + 'px';
+            glint.style.bottom = '-20px';
+            glint.style.opacity = '0.6';
+            glint.style.pointerEvents = 'none';
+            glint.style.zIndex = '1000';
+            glint.style.filter = 'blur(1px)';
+            document.body.appendChild(glint);
+            
+            let posX = parseFloat(glint.style.left);
+            let posY = -15;
+            let velX = (Math.random() - 0.5) * 1;
+            let velY = -1.2 - Math.random() * 2;
+            let gravity = 0.07;
+            let life = 1;
+            
+            function move() {
+                if (!glint.parentNode) return;
+                posX += velX;
+                posY += velY;
+                velY += gravity;
+                life -= 0.008;
+                glint.style.left = posX + 'px';
+                glint.style.bottom = posY + 'px';
+                glint.style.opacity = life * 0.7;
+                if (posY > window.innerHeight + 70 || life <= 0) {
+                    if(glint.remove) glint.remove();
+                    return;
                 }
                 requestAnimationFrame(move);
-                setTimeout(() => { if(glint && glint.remove) glint.remove(); }, 4000);
             }
+            requestAnimationFrame(move);
+            setTimeout(() => { if(glint && glint.remove) glint.remove(); }, 4000);
+        }
+    }
+
+    // --- Открытие конверта ---
+    function openEnvelope(triggeredByButton = true) {
+        if (isOpened || animationInProgress) return false;
+        animationInProgress = true;
+        
+        envelope.classList.add('open');
+        isOpened = true;
+        
+        if (formSection) {
+            formSection.style.opacity = '1';
+            formSection.style.pointerEvents = 'auto';
+            formSection.style.transition = 'opacity 0.4s';
+            formSection.style.animation = 'fadeSlide 0.5s ease-out';
         }
         
-        // --- Сохранение данных пользователя ---
-        function handleSaveUser() {
-            const fullNameInput = document.getElementById('fullName');
-            const birthDateInput = document.getElementById('birthDate');
-            const statusDiv = document.getElementById('formStatus');
-            
-            const fullName = fullNameInput.value;
-            const birthDate = birthDateInput.value;
-            
-            const result = addUser(fullName, birthDate);
-            if (result.success) {
-                giftNumberSpan.innerText = result.giftNumber;
-                giftNumberDisplay.style.display = 'block';
-                giftNumberDisplay.style.animation = 'fadeSlide 0.5s ease-out';
-                
-                statusDiv.style.color = '#b3ffcf';
-                statusDiv.innerText = result.msg + ' Номер: ' + result.giftNumber;
-                fullNameInput.value = '';
-                birthDateInput.value = '';
-                createSubtleConfetti();
-                
-                setTimeout(() => {
-                    if(statusDiv.innerText.includes(result.msg)) statusDiv.innerText = '';
-                    statusDiv.style.color = '#ffb3cf';
-                }, 4000);
-            } else {
-                statusDiv.style.color = '#ff9faa';
-                statusDiv.innerText = result.msg;
-                setTimeout(() => {
-                    if(statusDiv.innerText === result.msg) statusDiv.innerText = '';
-                    statusDiv.style.color = '#ffb3cf';
-                }, 2500);
-            }
+        createSubtleConfetti();
+        createFloatingGlints();
+        
+        setTimeout(() => { animationInProgress = false; }, 200);
+        
+        if (openBtn && !openBtn.disabled) {
+            openBtn.textContent = 'КОНВЕРТ ОТКРЫТ';
+            openBtn.disabled = true;
+            openBtn.style.opacity = '0.7';
+            openBtn.style.cursor = 'default';
         }
         
-        // --- События ---
-        function onButtonClick(e) {
-            e.preventDefault();
-            if (isOpened) return;
-            openEnvelope(true);
-        }
-        
-        function onEnvelopeTap(e) {
-            if (isOpened) return;
-            if (e.target === openBtn || openBtn?.contains(e.target)) return;
-            openEnvelope(false);
-        }
-        
-        // Инициализация
-        loadUsersFromStorage();
-        
-        if (openBtn) openBtn.addEventListener('click', onButtonClick);
-        const flap = document.getElementById('envelopeFlap');
-        if (envelope) envelope.addEventListener('click', onEnvelopeTap);
-        if (flap) flap.addEventListener('click', (e) => { e.stopPropagation(); if(!isOpened) openEnvelope(false); });
-        
-        const saveBtn = document.getElementById('saveDataBtn');
-        if (saveBtn) saveBtn.addEventListener('click', handleSaveUser);
-        
-        const excelBtn = document.getElementById('downloadExcelBtn');
-        if (excelBtn) excelBtn.addEventListener('click', exportToExcel);
-        
-        if (secretZone) {
-            secretZone.addEventListener('click', handleSecretClick);
-        }
-        
-        formSection.style.opacity = '0.5';
-        formSection.style.pointerEvents = 'none';
-    })();
+        const letterDiv = document.getElementById('letterInside');
+        if (letterDiv) letterDiv.classList.add('fancy-text');
+        if (navigator.vibrate && triggeredByButton) navigator.vibrate(50);
+        return true;
+    }
+    
+    // --- События ---
+    function onButtonClick(e) {
+        e.preventDefault();
+        if (isOpened) return;
+        openEnvelope(true);
+    }
+    
+    function onEnvelopeTap(e) {
+        if (isOpened) return;
+        if (e.target === openBtn || openBtn?.contains(e.target)) return;
+        openEnvelope(false);
+    }
+    
+    // Инициализация
+    if (openBtn) openBtn.addEventListener('click', onButtonClick);
+    const flap = document.getElementById('envelopeFlap');
+    if (envelope) envelope.addEventListener('click', onEnvelopeTap);
+    if (flap) flap.addEventListener('click', (e) => { e.stopPropagation(); if(!isOpened) openEnvelope(false); });
+    
+    const saveBtn = document.getElementById('saveDataBtn');
+    if (saveBtn) saveBtn.addEventListener('click', handleSaveUser);
+    
+    formSection.style.opacity = '0.5';
+    formSection.style.pointerEvents = 'none';
 </script>
 </body>
 </html>
