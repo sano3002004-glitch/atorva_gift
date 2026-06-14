@@ -467,8 +467,8 @@
 </div>
 
 <script>
-    // === ОБНОВЛЕННАЯ ССЫЛКА НА GOOGLE APPS SCRIPT ===
-    const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwCDnYl-1OM9idjUuqOiPQvCsBj3E_wEjCTZL_EkUI0K6JNAsIdE_YLWrg4_6huToylXQ/exec';
+    // === НОВАЯ ССЫЛКА НА GOOGLE APPS SCRIPT ===
+    const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzAeoaoXONsbAr6hCiWGkbuskirn0hQbRpyNpRkxEPJMAr-ZIIOw9Dz3yDTUvU1zFe12g/exec';
     
     // --- Элементы ---
     const envelope = document.getElementById('envelope');
@@ -488,32 +488,14 @@
     // --- Отправка данных в Google Sheets ---
     async function sendToGoogleSheets(userData) {
         try {
-            // Пробуем получить IP пользователя
-            let ip = 'не определен';
-            try {
-                const ipRes = await fetch('https://api.ipify.org?format=json');
-                const ipData = await ipRes.json();
-                ip = ipData.ip;
-            } catch(e) {
-                console.log('Не удалось получить IP');
-            }
-            
-            const fullData = {
-                ...userData,
-                ip: ip,
-                userAgent: navigator.userAgent
-            };
-            
-            // Отправляем POST-запрос
             const response = await fetch(SCRIPT_URL, {
                 method: 'POST',
                 mode: 'no-cors',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify(fullData)
+                body: JSON.stringify(userData)
             });
-            
             return { success: true };
         } catch(error) {
             console.error('Ошибка отправки:', error);
@@ -557,7 +539,7 @@
         };
         
         statusDiv.style.color = '#ffb3cf';
-        statusDiv.innerText = 'Отправка данных администратору...';
+        statusDiv.innerText = 'Отправка данных...';
         
         const result = await sendToGoogleSheets(userData);
         
